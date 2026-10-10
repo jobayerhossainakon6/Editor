@@ -1,0 +1,26 @@
+[
+  {
+    "id": "scene_01",
+    "image": "scene_1.jpg",
+    "duration": 3.0,
+    "title": "Hook & Question"
+  },
+  {
+    "id": "scene_02",
+    "image": "scene_2.jpg",
+    "duration": 2.5,
+    "title": "The Frustration"
+  },
+  {
+    "id": "scene_03",
+    "image": "scene_3.jpg",
+    "duration": 3.2,
+    "title": "The Breakthrough Strategy"
+  },
+  {
+    "id": "scene_04",
+    "image": "scene_4.jpg",
+    "duration": 2.8,
+    "title": "Call To Action & Follow"
+  }
+]

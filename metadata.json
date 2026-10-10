@@ -1,0 +1,8 @@
+{
+  "name": "Faceless Editor",
+  "description": "CapCut-style Faceless Video Editor with multi-track audio automation, real-time preview, JSON sync, and hardware-accelerated video rendering.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "sub_01",
+    "start": "00:00:00.200",
+    "end": "00:00:02.800",
+    "text": "99% OF CREATORS MAKE THIS MISTAKE",
+    "template": "hormozi_bold.ass"
+  },
+  {
+    "id": "sub_02",
+    "start": "00:00:03.000",
+    "end": "00:00:05.300",
+    "text": "THEY SPEND HOURS MANUALLY CUTTING",
+    "template": "mrbeast_yellow.ass"
+  },
+  {
+    "id": "sub_03",
+    "start": "00:00:05.500",
+    "end": "00:00:08.500",
+    "text": "AUTOMATED DUAL-JSON SYNC WINS",
+    "template": "neon_cyber.ass"
+  },
+  {
+    "id": "sub_04",
+    "start": "00:00:08.700",
+    "end": "00:00:11.300",
+    "text": "EXPORT 2-PASS H.264 IN SECONDS!",
+    "template": "viral_red_punch.ass"
+  }
+]

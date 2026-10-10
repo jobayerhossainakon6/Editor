@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Camera/Video Frame Body -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M28,30 C25.79,30 24,31.79 24,34 L24,74 C24,76.21 25.79,78 28,78 L80,78 C82.21,78 84,76.21 84,74 L84,34 C84,31.79 82.21,30 80,30 L28,30 Z M30,36 L78,36 L78,64 L30,64 L30,36 Z" />
+
+    <!-- Play Triangle -->
+    <path
+        android:fillColor="#FF38BDF8"
+        android:pathData="M48,43 L63,50 L48,57 Z" />
+
+    <!-- Subtitle Bar (representing ASS text sync) -->
+    <path
+        android:fillColor="#FFFBBF24"
+        android:pathData="M34,68 L74,68 C75.1,68 76,68.9 76,70 L76,71 C76,72.1 75.1,73 74,73 L34,73 C32.9,73 32,72.1 32,71 L32,70 C32,68.9 32.9,68 34,68 Z" />
+
+    <!-- Top Reel Sprockets -->
+    <path
+        android:fillColor="#A5B4FC"
+        android:pathData="M32,32 L36,32 L36,34 L32,34 Z M42,32 L46,32 L46,34 L42,34 Z M52,32 L56,32 L56,34 L52,34 Z M62,32 L66,32 L66,34 L62,34 Z M72,32 L76,32 L76,34 L72,34 Z" />
+</vector>

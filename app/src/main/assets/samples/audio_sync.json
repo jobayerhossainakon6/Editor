@@ -1,0 +1,52 @@
+[
+  {
+    "id": "audio_bgm_01",
+    "name": "Lo-Fi Study Chill Beat",
+    "track_index": 0,
+    "layer_index": 0,
+    "layer_type": "music",
+    "start_seconds": 0.0,
+    "duration": 12.0,
+    "volume": 0.85,
+    "fade_in_seconds": 0.8,
+    "fade_out_seconds": 1.2,
+    "loop": true,
+    "ducking": true,
+    "duck_volume": 0.25,
+    "is_muted": false,
+    "automation_keyframes": [
+      { "time": 0.0, "volume": 0.4 },
+      { "time": 1.5, "volume": 0.85 },
+      { "time": 10.0, "volume": 0.85 },
+      { "time": 12.0, "volume": 0.2 }
+    ]
+  },
+  {
+    "id": "audio_voiceover_01",
+    "name": "AI Voiceover Narration",
+    "track_index": 1,
+    "layer_index": 1,
+    "layer_type": "voiceover",
+    "start_seconds": 0.5,
+    "duration": 8.0,
+    "volume": 0.95,
+    "fade_in_seconds": 0.2,
+    "fade_out_seconds": 0.3,
+    "loop": false,
+    "is_muted": false
+  },
+  {
+    "id": "audio_sfx_01",
+    "name": "Cinematic Impact Punch",
+    "track_index": 2,
+    "layer_index": 2,
+    "layer_type": "sfx",
+    "start_seconds": 0.0,
+    "duration": 2.5,
+    "volume": 0.90,
+    "fade_in_seconds": 0.0,
+    "fade_out_seconds": 0.5,
+    "loop": false,
+    "is_muted": false
+  }
+]
