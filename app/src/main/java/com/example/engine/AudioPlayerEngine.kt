@@ -19,6 +19,14 @@ class AudioPlayerEngine(private val context: Context) {
         playbackManager.syncPlayback(audios, isPlaying, currentTimeSec)
     }
 
+    fun syncPlayback(
+        audios: List<AudioSegment>,
+        isPlaying: Boolean,
+        currentTimeSec: Double
+    ) {
+        playbackManager.syncPlayback(audios, isPlaying, currentTimeSec)
+    }
+
     fun seekTo(audios: List<AudioSegment>, currentTimeSec: Double) {
         playbackManager.seekTo(audios, currentTimeSec)
     }

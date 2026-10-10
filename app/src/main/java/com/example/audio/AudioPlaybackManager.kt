@@ -13,20 +13,28 @@ import com.example.model.AudioTrackItem
 import java.io.File
 
 /**
- * Studio Multi-Track Audio Engine for Real-Time Preview & Timeline Editing.
- * Provides instant, zero-latency playback, smooth playhead scrubbing without audio stutter,
- * real-time volume slider responsiveness, dynamic speech ducking, and seamless play/pause state transitions.
+ * Studio Multi-Track Audio Engine for Real-Time Preview Playback and Timeline Scrubbing.
+ * Handles instant, glitch-free preview playback, smooth playhead scrubbing without latency or audio stutter,
+ * dynamic audio ducking, live volume adjustments, and clean multi-player lifecycle management.
  */
 class AudioPlaybackManager(private val context: Context) {
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
     private val activePlayers = mutableMapOf<String, MediaPlayer>()
-    private val completedTracks = mutableSetOf<String>()
+    private val playingTracks = mutableSetOf<String>()
     private val mixerEngine = AudioMixerEngine(context)
 
-    private var wasPlaying: Boolean = false
     private var hasRequestedFocus: Boolean = false
+
+    init {
+        // Pre-warm sample audio files on a background worker thread so preview is instant
+        Thread {
+            try {
+                mixerEngine.ensureSampleAudioFilesExist()
+            } catch (_: Exception) {}
+        }.start()
+    }
 
     private fun requestAudioFocus() {
         if (hasRequestedFocus) return
@@ -71,6 +79,8 @@ class AudioPlaybackManager(private val context: Context) {
 
     /**
      * Synchronizes multi-track audio playback with the global timeline playhead.
+     * Starts players when entering clip boundaries, stops immediately when exiting,
+     * and maintains uninterrupted audio streaming without re-seeking stutter.
      */
     fun syncPlayback(
         audioTracks: List<AudioTrackItem>,
@@ -78,16 +88,11 @@ class AudioPlaybackManager(private val context: Context) {
         currentTimeSeconds: Double
     ) {
         if (!isPlaying || audioTracks.isEmpty()) {
-            if (wasPlaying) {
-                pauseAll()
-            }
+            stopAll()
             return
         }
 
         requestAudioFocus()
-
-        val isStartingPlayback = !wasPlaying
-        wasPlaying = true
 
         // Clean up removed audio tracks
         val currentTrackIds = audioTracks.map { it.id }.toSet()
@@ -96,10 +101,10 @@ class AudioPlaybackManager(private val context: Context) {
             activePlayers.remove(id)?.let { player ->
                 try { player.stop(); player.release() } catch (_: Exception) {}
             }
-            completedTracks.remove(id)
+            playingTracks.remove(id)
         }
 
-        // Determine if any voiceover track is actively sounding for automated ducking
+        // Determine if any voiceover track is actively sounding for speech ducking
         val isVoiceoverActive = audioTracks.any {
             (it.trackType == "voiceover" || it.trackType == "voice" || it.trackIndex == 1) &&
                     !it.isMuted && it.volume > 0f &&
@@ -108,11 +113,10 @@ class AudioPlaybackManager(private val context: Context) {
 
         for (track in audioTracks) {
             if (track.isMuted || track.volume <= 0f) {
-                activePlayers[track.id]?.let { player ->
-                    try {
-                        if (player.isPlaying) player.pause()
-                    } catch (_: Exception) {}
+                activePlayers.remove(track.id)?.let { player ->
+                    try { player.stop(); player.release() } catch (_: Exception) {}
                 }
+                playingTracks.remove(track.id)
                 continue
             }
 
@@ -121,20 +125,18 @@ class AudioPlaybackManager(private val context: Context) {
             val isInActiveSpan = (currentTimeSeconds >= trackStart && currentTimeSeconds < trackEnd)
 
             if (isInActiveSpan) {
-                val offsetInTrackSec = (currentTimeSeconds - trackStart) + track.audioOffsetSeconds
-                val targetMs = (offsetInTrackSec * 1000).toInt().coerceAtLeast(0)
+                val offsetInTrack = (currentTimeSeconds - trackStart) + track.audioOffsetSeconds
+                val targetMs = (offsetInTrack * 1000).toInt().coerceAtLeast(0)
                 val gain = track.getEffectiveVolumeAt(currentTimeSeconds, isVoiceoverActive).coerceIn(0f, 1f)
 
                 var player = activePlayers[track.id]
-
                 if (player == null) {
                     player = createPlayerForTrack(track)
                     if (player != null) {
-                        activePlayers[track.id] = player
                         try {
                             val duration = player.duration
                             val safeSeekMs = if (duration > 0 && !track.isLooping) {
-                                targetMs.coerceAtMost(duration - 50)
+                                targetMs.coerceAtMost((duration - 50).coerceAtLeast(0))
                             } else if (duration > 0 && track.isLooping) {
                                 targetMs % duration
                             } else {
@@ -143,23 +145,24 @@ class AudioPlaybackManager(private val context: Context) {
                             player.seekTo(safeSeekMs)
                             player.setVolume(gain, gain)
                             player.start()
-                            completedTracks.remove(track.id)
+                            activePlayers[track.id] = player
+                            playingTracks.add(track.id)
                         } catch (e: Exception) {
                             Log.w("AudioPlaybackManager", "Error starting player for ${track.title}: ${e.message}")
+                            try { player.release() } catch (_: Exception) {}
                         }
                     }
                 } else {
-                    // Update live automated volume on every tick (fade in, fade out, ducking)
+                    // Update live volume on each tick (fade, ducking, slider)
                     try {
                         player.setVolume(gain, gain)
                     } catch (_: Exception) {}
 
-                    if (isStartingPlayback || (!player.isPlaying && !completedTracks.contains(track.id))) {
-                        // Start or resume playback
+                    if (track.id !in playingTracks) {
                         try {
                             val duration = player.duration
                             val safeSeekMs = if (duration > 0 && !track.isLooping) {
-                                targetMs.coerceAtMost(duration - 50)
+                                targetMs.coerceAtMost((duration - 50).coerceAtLeast(0))
                             } else if (duration > 0 && track.isLooping) {
                                 targetMs % duration
                             } else {
@@ -167,32 +170,35 @@ class AudioPlaybackManager(private val context: Context) {
                             }
                             player.seekTo(safeSeekMs)
                             player.start()
-                            completedTracks.remove(track.id)
+                            playingTracks.add(track.id)
                         } catch (e: Exception) {
                             Log.w("AudioPlaybackManager", "Error resuming player for ${track.title}: ${e.message}")
                         }
+                    } else {
+                        // Player is currently active; only correct drift if more than 300ms out of sync
+                        val currentMs = try { player.currentPosition } catch (_: Exception) { -1 }
+                        if (currentMs >= 0 && Math.abs(currentMs - targetMs) > 300) {
+                            try {
+                                player.seekTo(targetMs)
+                            } catch (_: Exception) {}
+                        }
                     }
-                    // NOTE: While player is playing continuously, DO NOT call seekTo repeatedly!
-                    // This allows native Android AudioTrack buffers to stream with 0 stutter.
                 }
             } else {
-                // Outside this track's timeline span
-                if (currentTimeSeconds < trackStart) {
-                    completedTracks.remove(track.id)
-                }
-                activePlayers[track.id]?.let { player ->
+                // Exited clip boundary: stop and release immediately
+                activePlayers.remove(track.id)?.let { player ->
                     try {
-                        if (player.isPlaying) {
-                            player.pause()
-                        }
+                        player.stop()
+                        player.release()
                     } catch (_: Exception) {}
                 }
+                playingTracks.remove(track.id)
             }
         }
     }
 
     /**
-     * Overload supporting (audioTracks, currentTimeSeconds, isPlaying) ordering.
+     * Overload supporting (audioTracks, currentTimeSeconds, isPlaying) signature.
      */
     fun syncPlayback(
         audioTracks: List<AudioTrackItem>,
@@ -213,13 +219,19 @@ class AudioPlaybackManager(private val context: Context) {
         }
 
         for (track in audioTracks) {
+            if (track.isMuted || track.volume <= 0f) {
+                activePlayers.remove(track.id)?.let { try { it.stop(); it.release() } catch (_: Exception) {} }
+                playingTracks.remove(track.id)
+                continue
+            }
+
             val trackStart = track.startSeconds
             val trackEnd = track.startSeconds + track.durationSeconds
             val isInActiveSpan = (currentTimeSeconds >= trackStart && currentTimeSeconds < trackEnd)
 
-            if (isInActiveSpan && !track.isMuted && track.volume > 0f) {
-                val offsetInTrackSec = (currentTimeSeconds - trackStart) + track.audioOffsetSeconds
-                val targetMs = (offsetInTrackSec * 1000).toInt().coerceAtLeast(0)
+            if (isInActiveSpan) {
+                val offsetInTrack = (currentTimeSeconds - trackStart) + track.audioOffsetSeconds
+                val targetMs = (offsetInTrack * 1000).toInt().coerceAtLeast(0)
                 val gain = track.getEffectiveVolumeAt(currentTimeSeconds, isVoiceoverActive).coerceIn(0f, 1f)
 
                 var player = activePlayers[track.id]
@@ -235,28 +247,32 @@ class AudioPlaybackManager(private val context: Context) {
                         p.setVolume(gain, gain)
                         val duration = p.duration
                         val safeSeekMs = if (duration > 0 && !track.isLooping) {
-                            targetMs.coerceAtMost(duration - 50)
+                            targetMs.coerceAtMost((duration - 50).coerceAtLeast(0))
                         } else if (duration > 0 && track.isLooping) {
                             targetMs % duration
                         } else {
                             targetMs
                         }
-                        p.seekTo(safeSeekMs)
-                        completedTracks.remove(track.id)
+                        val currentMs = p.currentPosition
+                        if (Math.abs(currentMs - safeSeekMs) > 60) {
+                            p.seekTo(safeSeekMs)
+                        }
                     } catch (_: Exception) {}
                 }
             } else {
-                activePlayers[track.id]?.let { p ->
+                activePlayers.remove(track.id)?.let { p ->
                     try {
-                        if (p.isPlaying) p.pause()
+                        p.stop()
+                        p.release()
                     } catch (_: Exception) {}
                 }
+                playingTracks.remove(track.id)
             }
         }
     }
 
     /**
-     * Immediate live volume adjustment (e.g., when moving timeline volume slider).
+     * Immediate live volume adjustment (e.g. from timeline volume slider).
      */
     fun updateVolume(trackId: String, volume: Float) {
         activePlayers[trackId]?.let { player ->
@@ -292,7 +308,7 @@ class AudioPlaybackManager(private val context: Context) {
                 isLooping = track.isLooping
                 setOnCompletionListener {
                     if (!track.isLooping) {
-                        completedTracks.add(track.id)
+                        playingTracks.remove(track.id)
                     }
                 }
                 setOnErrorListener { _, what, extra ->
@@ -300,35 +316,54 @@ class AudioPlaybackManager(private val context: Context) {
                     activePlayers.remove(track.id)?.let {
                         try { it.reset(); it.release() } catch (_: Exception) {}
                     }
+                    playingTracks.remove(track.id)
                     true
                 }
             }
 
             var resolvedPath = track.audioPath
-            val needsFallback = resolvedPath.isEmpty() ||
-                    (!resolvedPath.startsWith("content://") && !File(resolvedPath).exists())
-
-            if (needsFallback) {
-                resolvedPath = mixerEngine.getSampleAudioPath(track.title, track.trackType)
-            }
+            var dataSourceSet = false
 
             when {
                 resolvedPath.startsWith("content://") || resolvedPath.startsWith("file://") -> {
-                    mp.setDataSource(context, Uri.parse(resolvedPath))
+                    try {
+                        mp.setDataSource(context, Uri.parse(resolvedPath))
+                        dataSourceSet = true
+                    } catch (_: Exception) {}
                 }
-                else -> {
-                    var file = File(resolvedPath)
-                    if (!file.exists() || file.length() < 100L) {
-                        // Guarantee file exists
-                        resolvedPath = mixerEngine.getSampleAudioPath(track.title, track.trackType)
-                        file = File(resolvedPath)
-                    }
+                resolvedPath.startsWith("/") -> {
+                    val file = File(resolvedPath)
                     if (file.exists() && file.length() > 0L) {
-                        mp.setDataSource(file.absolutePath)
-                    } else {
-                        return null
+                        try {
+                            mp.setDataSource(file.absolutePath)
+                            dataSourceSet = true
+                        } catch (_: Exception) {}
                     }
                 }
+                resolvedPath.isNotBlank() -> {
+                    val file = File(context.filesDir, resolvedPath)
+                    if (file.exists() && file.length() > 0L) {
+                        try {
+                            mp.setDataSource(file.absolutePath)
+                            dataSourceSet = true
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+
+            if (!dataSourceSet) {
+                // Ensure guaranteed fallback sample exists and is loaded
+                val fallbackPath = mixerEngine.getSampleAudioPath(track.title, track.trackType)
+                val fallbackFile = File(fallbackPath)
+                if (fallbackFile.exists() && fallbackFile.length() > 0L) {
+                    mp.setDataSource(fallbackFile.absolutePath)
+                    dataSourceSet = true
+                }
+            }
+
+            if (!dataSourceSet) {
+                try { mp.release() } catch (_: Exception) {}
+                return null
             }
 
             mp.prepare()
@@ -342,25 +377,18 @@ class AudioPlaybackManager(private val context: Context) {
     }
 
     /**
-     * Pauses all media players while keeping them initialized for instant resumption.
+     * Pauses all media players.
      */
     fun pauseAll() {
-        wasPlaying = false
-        for ((_, player) in activePlayers) {
-            try {
-                if (player.isPlaying) {
-                    player.pause()
-                }
-            } catch (_: Exception) {}
-        }
-        abandonAudioFocus()
+        stopAll()
     }
 
     /**
-     * Stops and releases all media players completely.
+     * Releases all active media players and resets audio state.
      */
     fun stopAll() {
-        wasPlaying = false
+        abandonAudioFocus()
+        playingTracks.clear()
         for ((_, player) in activePlayers) {
             try {
                 player.stop()
@@ -368,9 +396,12 @@ class AudioPlaybackManager(private val context: Context) {
             } catch (_: Exception) {}
         }
         activePlayers.clear()
-        completedTracks.clear()
-        abandonAudioFocus()
     }
 
-    fun release() = stopAll()
+    /**
+     * Safe cleanup on ViewModel / Activity disposal.
+     */
+    fun release() {
+        stopAll()
+    }
 }

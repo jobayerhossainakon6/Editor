@@ -153,4 +153,77 @@ class AudioEngineTest {
         assertEquals(1, parsed[1].trackIndex)
         assertEquals("voiceover", parsed[1].layerType)
     }
+
+    @Test
+    fun testAudioExportCommandBuilderFilterComplex() {
+        val tracks = listOf(
+            AudioSegment(
+                id = "aud_track_1",
+                title = "Background Music",
+                audioPath = "/data/music.wav",
+                startSeconds = 0.0,
+                durationSeconds = 15.0,
+                volume = 0.8f
+            ),
+            AudioSegment(
+                id = "aud_track_2",
+                title = "Narration Voice",
+                audioPath = "/data/voice.wav",
+                startSeconds = 2.5,
+                durationSeconds = 8.0,
+                volume = 1.0f
+            )
+        )
+
+        val inputs = mutableListOf<String>()
+        val (finalLabel, filterParts) = com.example.video.AudioExportCommandBuilder.buildFfmpegAudioFilters(
+            audioTracks = tracks,
+            inputsList = inputs,
+            startInputIndex = 1
+        )
+
+        assertEquals(4, inputs.size) // -i music.wav -i voice.wav
+        assertEquals("-i", inputs[0])
+        assertEquals("/data/music.wav", inputs[1])
+        assertEquals("-i", inputs[2])
+        assertEquals("/data/voice.wav", inputs[3])
+
+        assertEquals("a_final", finalLabel)
+        assertEquals(3, filterParts.size)
+        // Track 1 starts at 0.0s -> no adelay
+        assertTrue(filterParts[0].contains("[1:a]volume=0.80[a_mix_0]"))
+        // Track 2 starts at 2.5s -> adelay=2500|2500
+        assertTrue(filterParts[1].contains("adelay=2500|2500"))
+        // Combined with amix
+        assertTrue(filterParts[2].contains("amix=inputs=2"))
+    }
+
+    @Test
+    fun testAudioPlaybackManagerSyncAndStop() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val manager = com.example.audio.AudioPlaybackManager(context)
+
+        val testTracks = listOf(
+            AudioSegment(
+                id = "bgm_1",
+                title = "Lo-Fi Music",
+                audioPath = "",
+                startSeconds = 0.0,
+                durationSeconds = 10.0,
+                volume = 0.8f
+            )
+        )
+
+        // Scrubbing to 3.0s while paused
+        manager.seekTo(testTracks, 3.0)
+
+        // Syncing playback
+        manager.syncPlayback(testTracks, isPlaying = true, currentTimeSeconds = 1.0)
+
+        // Updating live volume
+        manager.updateVolume("bgm_1", 0.5f)
+
+        // Stop all on pause
+        manager.stopAll()
+    }
 }
